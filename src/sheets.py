@@ -1,5 +1,5 @@
 import os
-from dotenv import load_dotenv          
+from dotenv import load_dotenv
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
@@ -24,13 +24,13 @@ creds = Credentials.from_service_account_file(
 
 gc = gspread.authorize(creds)
 
-balance_wb   = gc.open("StaffSync.AI - Leaves Balance")
+balance_wb = gc.open("StaffSync.AI - Leaves Balance")
 directory_wb = gc.open("StaffSync.AI - Employee Directory")
-logs_wb      = gc.open("StaffSync.AI - Leaves Logs")
+logs_wb = gc.open("StaffSync.AI - Leaves Logs")
 
-balance_ws   = balance_wb.sheet1
+balance_ws = balance_wb.sheet1
 directory_ws = directory_wb.sheet1
-logs_ws      = logs_wb.sheet1
+logs_ws = logs_wb.sheet1
 
 print("Connected to Google Sheets successfully!")
 
