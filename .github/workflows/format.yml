@@ -1,25 +1,20 @@
-name: Black Auto Format
+name: Black Check
 on: [push, pull_request]
 
 permissions:
-  contents: write          
+  contents: read      
 
 jobs:
-  format:
+  black:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4          
+      - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
+
       - run: pip install black
-      - run: black .
-      - name: Commit & push if changed
-        run: |
-          git config --global user.name  "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if ! git diff --cached --quiet; then
-            git commit -m "Auto‑format code with Black"
-            git push
-          fi
+
+      - name: Run Black in check mode
+        run: black --check --diff .
