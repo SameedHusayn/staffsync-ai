@@ -108,54 +108,45 @@ def load_policies(collection=None):
 
 
 def search_policy(
-    query, n_results=3, collection=None, extract_relevant=True, max_context_window=100
+    query: str,
+    n_results: int = 3,
+    collection=None,
+    similarity_cutoff: float = 1.0,
+    extract_relevant: bool = True,
+    max_context_window: int = 100,
 ):
-    """
-    Search for policy information with enhanced relevance extraction.
-
-    Args:
-        query: The search query
-        n_results: Number of chunks to retrieve
-        collection: ChromaDB collection
-        extract_relevant: Whether to extract only the most relevant section from each chunk
-        max_context_window: Words around the query terms to extract (if extract_relevant=True)
-
-    Returns:
-        A list of relevant text sections with their metadata
-    """
     if collection is None:
         collection = get_or_create_policy_collection()
 
-    results = collection.query(query_texts=[query], n_results=n_results)
+    query_terms = [t.lower() for t in query.split() if len(t) > 3]
 
-    # Return documents along with their metadata
-    documents = results["documents"][0] if results["documents"] else []
-    metadatas = results["metadatas"][0] if results["metadatas"] else []
+    res = collection.query(
+        query_texts=[query],
+        n_results=max(n_results * 5, 10),  # fetch plenty first
+        include=["documents", "metadatas", "distances"],
+    )
 
-    if not extract_relevant:
-        return list(zip(documents, metadatas))
+    docs, metas, dists = res["documents"][0], res["metadatas"][0], res["distances"][0]
 
-    # Extract the most relevant parts based on query terms
-    processed_results = []
-    query_terms = set(term.lower() for term in query.split() if len(term) > 3)
+    # keep only hits under the cutoff, then sort by distance ↑
+    keep = [
+        (doc, meta, dist)
+        for doc, meta, dist in zip(docs, metas, dists)
+        if dist <= similarity_cutoff
+    ]
+    keep.sort(key=lambda x: x[2])  # nearest first
+    keep = keep[:n_results]  # top‑k after filtering
 
-    for doc, metadata in zip(documents, metadatas):
-        # Find the most relevant paragraph
-        paragraphs = [p for p in doc.split("\n\n") if p.strip()]
-        if not paragraphs:
-            paragraphs = [doc]
+    if not keep:
+        return []  # or raise / return “no match”
 
-        # Score paragraphs by query term occurrence
-        scored_paragraphs = []
-        for para in paragraphs:
-            score = sum(1 for term in query_terms if term in para.lower())
-            scored_paragraphs.append((para, score))
+    results = []
+    for doc, meta, _dist in keep:
+        paragraphs = [p for p in doc.split("\n\n") if p.strip()] or [doc]
+        para_scores = [
+            (p, sum(word in p.lower() for word in query_terms)) for p in paragraphs
+        ]
+        best_para = max(para_scores, key=lambda x: x[1])[0]
+        results.append((best_para.strip(), meta))
 
-        # Get the most relevant paragraph
-        most_relevant = (
-            max(scored_paragraphs, key=lambda x: x[1])[0] if scored_paragraphs else doc
-        )
-
-        processed_results.append((most_relevant, metadata))
-
-    return processed_results
+    return results
