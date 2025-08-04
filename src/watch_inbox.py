@@ -1,53 +1,17 @@
-import imaplib, email, re, datetime, os
-from src.utils import (
-    update_leave_log_status,
-    get_employee_info,
-    first_visible_line,
-    infer_imap,
-)
-from .core.auth import send_mail
+import time
+import imaplib, email, re, os
+from src.utils import update_leave_log_status, first_visible_line, infer_imap
 
 IMAP_USER = os.environ["EMAIL_SENDER"]
 IMAP_PASS = os.environ["EMAIL_PASSWORD"]
-IMAP_HOST, IMAP_PORT = infer_imap(IMAP_USER)
-
-imap = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
+IMAP_HOST, IMAP_PORT = infer_imap(IMAP_USER)  # keep both host & port
 
 PATTERN = re.compile(r"Leave Request #(\d+)", re.I)
 
-
-def process_reply(request_id: int, lead_email: str, verb: str) -> None:
-    """
-    Update the sheet and notify the employee based on the lead's reply.
-    verb = "Approved" or "Rejected"
-    """
-    ok = update_leave_log_status(request_id, verb, approved_by=lead_email)
-    if not ok:
-        print(f"⚠️  Request {request_id} not found in sheet")
-        return
-
-    # Fetch employee's own address for confirmation
-    employee = get_employee_info_by_request_id(request_id)  # implement or look up
-    body = f"""
-    Hi {employee['name']},
-
-    Your leave request #{request_id} has been <b>{verb.lower()}</b> by {lead_email}.
-
-    — StaffSync.AI
-    """
-    send_mail(
-        employee["email"],
-        f"Leave Request #{request_id} {verb} {'✅' if verb=='Approved' else '❌'}",
-        body,
-        otp=False,
-    )
-    print(f"✅ Request {request_id} {verb.lower()} by {lead_email}")
+POLL_SECONDS = 5  # how often to check
 
 
-def watch_inbox():
-    imap = imaplib.IMAP4_SSL(IMAP_HOST)
-    imap.login(IMAP_USER, IMAP_PASS)
-    imap.select("INBOX")
+def _process_unseen_messages(imap):
     typ, data = imap.search(None, '(UNSEEN SUBJECT "Leave Request #")')
     for num in data[0].split():
         typ, raw = imap.fetch(num, "(RFC822)")
@@ -61,12 +25,22 @@ def watch_inbox():
 
         reply = first_visible_line(msg).strip().lower()
         if reply == "y":
-            process_reply(request_id, lead_email, "Approved")
+            update_leave_log_status(request_id, "Approved", approved_by=lead_email)
         elif reply == "n":
-            process_reply(request_id, lead_email, "Rejected")
+            update_leave_log_status(request_id, "Rejected", approved_by=lead_email)
 
-        # mark processed so we don't touch it again
-        imap.store(num, "+FLAGS", "\\Seen")
+        imap.store(num, "+FLAGS", "\\Seen")  # mark processed
 
-    imap.close()
-    imap.logout()
+
+def watch_inbox():
+    while True:
+        try:
+            with imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT) as imap:
+                imap.login(IMAP_USER, IMAP_PASS)
+                imap.select("INBOX")
+                _process_unseen_messages(imap)
+        except Exception as e:
+            # log the exception here; if you use logging, replace print
+            print("Inbox watcher error:", e)
+
+        time.sleep(POLL_SECONDS)  # wait before next cycle

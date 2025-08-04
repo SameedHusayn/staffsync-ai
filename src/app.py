@@ -4,6 +4,8 @@ import gradio as gr
 from dotenv import load_dotenv
 import os
 import uuid
+import datetime
+import threading
 from .utils import generate_response, call_function
 from .core.auth_middleware import (
     extract_otp_from_message,
@@ -19,14 +21,14 @@ from .core.auth import (
     get_authenticated_employee,
 )
 from .constants import system_call
-import datetime
+from .watch_inbox import watch_inbox
 
 
 load_dotenv()
 
 system_call = system_call.format(date=datetime.datetime.now().strftime("%Y-%m-%d"))
 # Store conversation history per user
-conversation_history = {"role": "system", "content": system_call}
+conversation_history = {}
 # Dictionary to store user session data
 user_sessions = {}
 
@@ -45,7 +47,7 @@ def gradio_chat(message, history):
 
     # Initialize conversation history
     if user_id not in conversation_history:
-        conversation_history[user_id] = []
+        conversation_history[user_id] = [{"role": "system", "content": system_call}]
 
     user_conv_history = conversation_history[user_id]
 
@@ -400,5 +402,6 @@ with gr.Blocks(css=css, title="HR-Bot") as demo:
     )
 
 if __name__ == "__main__":
+    threading.Thread(target=watch_inbox, daemon=True).start()
     print("🚀 Starting HR-Bot...")
     demo.launch(share=True, debug=True)

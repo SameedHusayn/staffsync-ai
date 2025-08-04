@@ -7,7 +7,7 @@ from .constants import tools
 from .core.auth_middleware import authenticate_function_call, pending_function_calls
 from .core.auth import send_mail
 from .sheets_config import balance_ws, directory_ws, logs_ws
-from .constants import LEAVE_REQUEST_TEMPLATE
+from .constants import LEAVE_REQUEST_TEMPLATE, LEAVE_STATUS_EMAIL_TEMPLATE
 from .hr_policy_vault import (
     search_policy,
     load_policies,
@@ -46,9 +46,9 @@ def get_employee_balance(employee_id):
     for record in balance_data:
         if str(record["Employee ID"]) == str(employee_id):
             return {
-                "annual_leave": record["Annual Leave"],
-                "sick_leave": record["Sick Leave"],
-                "casual_leave": record["Casual Leave"],
+                "Annual Leave": record["Annual Leave"],
+                "Sick Leave": record["Sick Leave"],
+                "Casual Leave": record["Casual Leave"],
             }
 
     return None  # Employee not found
@@ -150,6 +150,18 @@ def add_leave_log(
     Returns:
         int: The new request ID
     """
+
+    leaves_balance = get_employee_balance(employee_id)
+    if not leaves_balance:
+        print(f"Employee ID {employee_id} not found or has no leave balance.")
+        return f"Employee ID {employee_id} not found or has no leave balance."
+
+    if leaves_balance[leave_type] < days:
+        print(
+            f"Insufficient {leave_type} balance for employee ID {employee_id}. Available: {leaves_balance[leave_type]}, Requested: {days}."
+        )
+        return f"Insufficient {leave_type} balance for employee ID {employee_id}. Available: {leaves_balance[leave_type]}, Requested: {days}."
+
     employee_info = get_employee_info(employee_id)
     employee_name = employee_info["name"]
     # Generate a new request ID
@@ -199,7 +211,7 @@ def add_leave_log(
 
     if email_sent:
         print(
-            f"✅ Email sent to {employee_info['lead']} for new leave request #{new_request_id}"
+            f"✅ Email sent to LEAD: {employee_info['lead']} for new leave request #{new_request_id}"
         )
         return f"{new_request_id} - Leave request added successfully and email sent to employee's lead."
     else:
@@ -226,16 +238,58 @@ def update_leave_log_status(request_id, new_status, approved_by=None):
         if int(log["Request ID"]) == int(request_id):
             row_num = i + 2  # Adjust for header and zero-indexing
 
+            employee_name = log["Employee Name"]
+            employee_id = log["Employee ID"]
             # Update status
-            logs_ws.update_cell(row_num, 7, new_status)
+            logs_ws.update_cell(row_num, 8, new_status)
 
             # Update approver info if provided
             if approved_by:
-                logs_ws.update_cell(row_num, 9, approved_by)  # Approved By
+                logs_ws.update_cell(row_num, 10, approved_by)  # Approved By
                 approval_date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                logs_ws.update_cell(row_num, 10, approval_date)  # Approval Date
+                logs_ws.update_cell(row_num, 11, approval_date)  # Approval Date
 
-            return True
+            if new_status.lower() == "approved":
+                # Update leave balance
+                leave_type = log["Leave Type"]
+                days = log["Days"]
+                update_leave_balance(employee_id, leave_type, -days)
+            elif new_status.lower() == "rejected":
+                # No balance update needed for rejection
+                pass
+            print(f"✅ Request {request_id} updated to {new_status}")
+
+            try:
+                email_body = LEAVE_STATUS_EMAIL_TEMPLATE.format(
+                    employee_name=employee_name,
+                    request_id=request_id,
+                    new_status=new_status.lower(),
+                    approved_by=approved_by,
+                )
+                employee_info = get_employee_info(employee_id)
+
+                to_addr = employee_info["email"]  # ← match the real key
+                subject = f"Leave status {new_status} - Request #{request_id}"
+                # Send email notification
+                email_sent = send_mail(
+                    to_addr,
+                    subject,
+                    email_body,
+                    f"StaffSync.AI - {subject}",
+                    otp=False,
+                )
+                if email_sent:
+                    print(
+                        f"✅ Email sent to employee: {to_addr} for request #{request_id}"
+                    )
+                    return True
+                else:
+                    print(f"⚠️ Failed to send email for request #{request_id}")
+                    return False
+            except Exception as e:
+                print(
+                    f"⚠️ Error updating leave log status for request #{request_id}: {e}"
+                )
 
     return False  # Request not found
 
@@ -298,39 +352,44 @@ function_map = {
     "get_employee_balance": get_employee_balance,
     "get_employee_info": get_employee_info,
     "get_employee_logs": get_employee_logs,
-    "update_leave_balance": update_leave_balance,
     "add_leave_log": add_leave_log,
-    "update_leave_log_status": update_leave_log_status,
     "file_search": file_search,
 }
 
 
 def call_function(name, raw_args, user_id):
     """Call a function with authentication check."""
-    args = json.loads(raw_args)
-    func = function_map.get(name)
+    try:
+        args = json.loads(raw_args)
+        func = function_map.get(name)
 
-    # Check if authentication is required
-    auth_message = authenticate_function_call(user_id, "", name, args)
-    if auth_message:
-        # Authentication required or in progress - return the message instead of calling function
-        return {"message": auth_message, "auth_required": True}
+        # Check if authentication is required
+        auth_message = authenticate_function_call(user_id, "", name, args)
+        if auth_message:
+            # Authentication required or in progress - return the message instead of calling function
+            return {"message": auth_message, "auth_required": True}
 
-    # User is authenticated or function doesn't require authentication
-    if func:
-        result = func(**args)
+        # User is authenticated or function doesn't require authentication
+        if func:
+            result = func(**args)
 
-        # If there's a pending function call for this user, clear it
-        if user_id in pending_function_calls:
-            del pending_function_calls[user_id]
+            # If there's a pending function call for this user, clear it
+            if user_id in pending_function_calls:
+                del pending_function_calls[user_id]
 
-        return result
-
-    raise ValueError(f"Function '{name}' not recognized.")
+            return result
+    except Exception as e:
+        print(f"Error calling function {name}: {e}")
+        return {
+            "message": f"❌ Error calling function '{name}': {str(e)}",
+            "auth_required": False,
+        }
 
 
 def generate_response(input_messages, tools=tools):
+    print("Generating response with input:", input_messages)
     response = client.responses.create(
         model="gpt-4.1", input=input_messages, tools=tools
     )
+    print("Generated response:", response)
     return response
