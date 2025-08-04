@@ -58,13 +58,13 @@ tools = [
     {
         "type": "function",
         "name": "file_search",
-        "description": "Search HR policy documents for relevant information. If you think user has asked a question about company policies, use this tool to find relevant documents.",
+        "description": "Search HR policy documents for relevant information. If the user asks about policy for anything, call this function and I will provide u with context.",
         "parameters": {
             "type": "object",
             "properties": {
                 "query_text": {
                     "type": "string",
-                    "description": "The text to search for in policy documents.",
+                    "description": "The exact user message pasted without changes.",
                 }
             },
             "required": ["query_text"],
