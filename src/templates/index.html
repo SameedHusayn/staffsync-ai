@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StaffSync.AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.svg') }}">
+</head>
+<body>
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="logo-container">
+                <img src="{{ url_for('static', filename='images/logo.svg') }}" alt="HR-Bot Logo" class="logo">
+                <h1>StaffSync.AI</h1>
+            </div>
+            <div class="sidebar-content">
+                <div class="sidebar-section">
+                    <h3>Examples</h3>
+                    <div class="example-list">
+                        <div class="example-item" data-message="What's my annual leave balance? I am employee 1">
+                            <i class="fas fa-calendar-days"></i>
+                            <span>Check my leave balance</span>
+                        </div>
+                        <div class="example-item" data-message="What's the fine for smoking?">
+                            <i class="fas fa-shirt"></i>
+                            <span>Smoking policy</span>
+                        </div>
+                        <div class="example-item" data-message="I want to request 3 days of annual leave from next Monday.">
+                            <i class="fas fa-plane-departure"></i>
+                            <span>Request leave</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="sidebar-section">
+                    <h3>Actions</h3>
+                    <div class="action-list">
+                        <div class="action-item" id="reset-btn">
+                            <i class="fas fa-trash-can"></i>
+                            <span>Reset conversation</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="sidebar-footer">
+                <p>&copy; 2025 StaffSync.AI</p>
+            </div>
+        </div>
+        
+        <div class="chat-container">
+            <div class="chat-header">
+                <div class="chat-header-title">
+                    <i class="fas fa-robot"></i>
+                    <h2>StaffSync Assistant</h2>
+                </div>
+                <div class="chat-header-status">
+                    <span class="status-indicator online"></span>
+                    <span>Online</span>
+                </div>
+            </div>
+            
+            <div class="messages" id="messages">
+                <div class="message bot-message">
+                    <div class="message-avatar">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <div class="message-content">
+                        <p>👋 Hello! I'm your Avy, an HR assistant powered by StaffSync.AI. I can help you with leave balances, company policies, or submitting leave requests. How can I assist you today?</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="input-area">
+                <form id="chat-form">
+                    <input type="text" id="user-input" placeholder="Type your message here..." autocomplete="off">
+                    <button type="submit">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- OTP Modal -->
+    <div class="modal" id="otp-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🔐 Authentication Required</h3>
+                <button class="close-btn" id="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="otp-message">Please enter the 6-digit code sent to your email:</p>
+                <div class="otp-input-container">
+                    <input type="text" id="otp-input" maxlength="6" placeholder="000000">
+                </div>
+                <p id="otp-status" class="otp-status"></p>
+            </div>
+            <div class="modal-footer">
+                <button id="cancel-otp" class="btn btn-secondary">Cancel</button>
+                <button id="submit-otp" class="btn btn-primary">Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+</body>
+</html>
