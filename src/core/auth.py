@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional, Tuple
 
 from src.sheets_config import directory_ws
+from src.constants import AUTH_EMAIL_TEMPLATE
 
 # Store authenticated sessions per user
 # Format: {user_id: True/False}
@@ -36,8 +37,13 @@ def get_employee_email(emp_id: str) -> Optional[str]:
         return None
 
 
-def send_otp_email(email: str, otp: str) -> bool:
+def send_mail(email, content, body, subject, otp=True) -> bool:
     """Send OTP to employee email with improved Gmail support."""
+
+    if otp:
+        email_type = "OTP"
+    else:
+        email_type = "Notification"
     try:
         # Email configuration
         sender_email = os.environ.get("EMAIL_SENDER")
@@ -45,54 +51,14 @@ def send_otp_email(email: str, otp: str) -> bool:
 
         if not sender_email or not password:
             print("⚠️  EMAIL_SENDER or EMAIL_PASSWORD not set in environment variables")
-            print(f"[DEV MODE] OTP for {email}: {otp}")
+            print(f"[DEV MODE] {email_type} for {email}: {content}")
             return True
 
         # Create message
         message = MIMEMultipart()
         message["From"] = sender_email
         message["To"] = email
-        message["Subject"] = "StaffSync.AI - Authentication Code"
-
-        body = f"""
-        <html>
-          <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f5f5f5;">
-            <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-              <div style="text-align: center; margin-bottom: 30px;">
-                <h1 style="color: #333; margin: 0;">🔐 StaffSync.AI</h1>
-                <h2 style="color: #666; font-weight: normal; margin: 10px 0;">Authentication Code</h2>
-              </div>
-              
-              <p style="color: #555; font-size: 16px; line-height: 1.5;">
-                You've requested to authenticate with StaffSync.AI. Please use the following verification code:
-              </p>
-              
-              <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 25px; border-radius: 8px; margin: 25px 0; text-align: center;">
-                <div style="background-color: white; display: inline-block; padding: 15px 25px; border-radius: 6px;">
-                  <h1 style="margin: 0; color: #333; letter-spacing: 8px; font-family: 'Courier New', monospace;">{otp}</h1>
-                </div>
-              </div>
-              
-              <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 6px; margin: 20px 0;">
-                <p style="margin: 0; color: #856404; font-size: 14px;">
-                  ⏰ This code will expire in <strong>10 minutes</strong>
-                </p>
-              </div>
-              
-              <p style="color: #666; font-size: 14px; line-height: 1.5;">
-                If you didn't request this code, please ignore this email. For security reasons, never share this code with anyone.
-              </p>
-              
-              <hr style="border: none; border-top: 1px solid #eee; margin: 25px 0;">
-              
-              <p style="color: #999; font-size: 12px; text-align: center; margin: 0;">
-                Thank you,<br>
-                <strong>StaffSync.AI Team</strong>
-              </p>
-            </div>
-          </body>
-        </html>
-        """
+        message["Subject"] = subject
 
         message.attach(MIMEText(body, "html"))
 
@@ -115,7 +81,7 @@ def send_otp_email(email: str, otp: str) -> bool:
             smtp_port = 587
 
         # Connect to SMTP server and send email
-        print(f"📧 Attempting to send OTP email via {smtp_server}...")
+        print(f"📧 Attempting to send {email_type} email via {smtp_server}...")
 
         server = smtplib.SMTP(smtp_server, smtp_port)
         server.starttls()
@@ -123,7 +89,7 @@ def send_otp_email(email: str, otp: str) -> bool:
         server.send_message(message)
         server.quit()
 
-        print(f"✅ OTP sent successfully to {email}")
+        print(f"✅ {email_type} sent successfully to {email}")
         return True
 
     except smtplib.SMTPAuthenticationError as e:
@@ -140,12 +106,12 @@ def send_otp_email(email: str, otp: str) -> bool:
         print(
             "5. Make sure 'Less secure app access' is NOT enabled (use App Passwords instead)"
         )
-        print(f"\n[DEV MODE] OTP for {email}: {otp}")
+        print(f"\n[DEV MODE] {email_type} for {email}: {content}")
         return True  # Return True for dev environment
 
     except Exception as e:
-        print(f"❌ Error sending OTP email: {e}")
-        print(f"[DEV MODE] OTP for {email}: {otp}")
+        print(f"❌ Error sending {email_type} email: {e}")
+        print(f"[DEV MODE] {email_type} for {email}: {content}")
         return True  # Return True anyway so flow continues in dev environment
 
 
@@ -179,8 +145,10 @@ def initiate_authentication(user_id: str, emp_id: str) -> Dict:
         f"📱 Generated OTP {otp} for employee {emp_id}, expires at {pending_otps[emp_id]['expires_at']}"
     )
 
+    # Prepare email body
+    body = AUTH_EMAIL_TEMPLATE.format(message=otp)
     # Send OTP to employee email
-    email_sent = send_otp_email(email, otp)
+    email_sent = send_mail(email, otp, body, "StaffSync.AI - Authentication Code")
 
     # Mask the email for privacy
     email_parts = email.split("@")

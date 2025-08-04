@@ -56,6 +56,7 @@ def authenticate_function_call(
     non_auth_functions = {
         # Add any functions that don't need authentication
         # For now, all HR functions require authentication
+        "file_search",
     }
 
     if func_name in non_auth_functions:

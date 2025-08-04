@@ -4,11 +4,6 @@ import gradio as gr
 from dotenv import load_dotenv
 import os
 import uuid
-from .hr_policy_vault import (
-    search_policy,
-    load_policies,
-    get_or_create_policy_collection,
-)
 from .utils import generate_response, call_function
 from .core.auth_middleware import (
     extract_otp_from_message,
@@ -23,14 +18,15 @@ from .core.auth import (
     pending_otps,
     get_authenticated_employee,
 )
+from .constants import system_call
+import datetime
+
 
 load_dotenv()
 
+system_call = system_call.format(date=datetime.datetime.now().strftime("%Y-%m-%d"))
 # Store conversation history per user
-conversation_history = {}
-hr_docs = get_or_create_policy_collection()
-load_policies(hr_docs)
-
+conversation_history = {"role": "system", "content": system_call}
 # Dictionary to store user session data
 user_sessions = {}
 
@@ -68,20 +64,7 @@ def gradio_chat(message, history):
             conversation_history[user_id] = []
         return "🧹 All session data reset"
 
-    # Process normal message
-    contextful_message = search_policy(
-        message, n_results=3, collection=hr_docs, extract_relevant=True
-    )
-
-    if contextful_message:
-        context_text = "\n".join(
-            [f"{doc} (from {meta['source']})" for doc, meta in contextful_message]
-        )
-        user_message_with_context = f"{message}\n\nContext:\n{context_text}"
-    else:
-        user_message_with_context = message
-
-    user_conv_history.append({"role": "user", "content": user_message_with_context})
+    user_conv_history.append({"role": "user", "content": message})
 
     # Generate response
     while True:

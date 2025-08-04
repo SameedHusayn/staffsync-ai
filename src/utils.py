@@ -5,9 +5,19 @@ from dotenv import load_dotenv
 import json
 from .constants import tools
 from .core.auth_middleware import authenticate_function_call, pending_function_calls
+from .core.auth import send_mail
 from .sheets_config import balance_ws, directory_ws, logs_ws
+from .constants import LEAVE_REQUEST_TEMPLATE
+from .hr_policy_vault import (
+    search_policy,
+    load_policies,
+    get_or_create_policy_collection,
+)
 
 load_dotenv()
+
+hr_docs = get_or_create_policy_collection()
+load_policies(hr_docs)
 
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -109,7 +119,7 @@ def update_leave_balance(employee_id, leave_type, days_change):
             break
 
     if not employee_row:
-        return False  # Employee not found
+        return "Employee Not Found"  # Employee not found
 
     # Update the balance
     new_balance = current_balance + days_change
@@ -120,7 +130,7 @@ def update_leave_balance(employee_id, leave_type, days_change):
 
     # Update the cell
     balance_ws.update_cell(employee_row, col_index, new_balance)
-    return True
+    return "Leave balance updated successfully"
 
 
 def add_leave_log(
@@ -140,6 +150,8 @@ def add_leave_log(
     Returns:
         int: The new request ID
     """
+    employee_info = get_employee_info(employee_id)
+    employee_name = employee_info["name"]
     # Generate a new request ID
     logs_data = logs_ws.get_all_records()
     if logs_data:
@@ -153,6 +165,7 @@ def add_leave_log(
     new_row = [
         new_request_id,
         employee_id,
+        employee_name,
         leave_type,
         days,
         start_date,
@@ -166,7 +179,32 @@ def add_leave_log(
     # Append to the sheet
     logs_ws.append_row(new_row)
 
-    return new_request_id
+    email_body = LEAVE_REQUEST_TEMPLATE.format(
+        employee_name=employee_name,
+        request_id=new_request_id,
+        leave_type=leave_type,
+        days=days,
+        start_date=start_date,
+        end_date=end_date,
+        submitted_at=submitted_at,
+    )
+
+    email_sent = send_mail(
+        employee_info["lead"],
+        f"New Leave Request #{new_request_id}",
+        email_body,
+        f"StaffSync.AI - New Leave Request #{new_request_id}",
+        otp=False,
+    )
+
+    if email_sent:
+        print(
+            f"✅ Email sent to {employee_info['lead']} for new leave request #{new_request_id}"
+        )
+        return f"{new_request_id} - Leave request added successfully and email sent to employee's lead."
+    else:
+        print(f"⚠️ Failed to send email for new leave request #{new_request_id}")
+        return f"{new_request_id} - Leave request added successfully, but email notification failed."
 
 
 def update_leave_log_status(request_id, new_status, approved_by=None):
@@ -202,6 +240,60 @@ def update_leave_log_status(request_id, new_status, approved_by=None):
     return False  # Request not found
 
 
+def file_search(query_text):
+    contextful_message = search_policy(
+        query_text, n_results=3, collection=hr_docs, extract_relevant=True
+    )
+
+    if contextful_message:
+        context_text = "\n".join(
+            [f"{doc} (from {meta['source']})" for doc, meta in contextful_message]
+        )
+        user_message_with_context = f"{query_text}\n\nContext:\n{context_text}"
+    else:
+        user_message_with_context = query_text
+    return user_message_with_context
+
+
+def infer_imap(host_email: str) -> tuple[str, int]:
+    host_email = host_email.lower()
+    if host_email.endswith("@gmail.com") or host_email.endswith("@googlemail.com"):
+        return "imap.gmail.com", 993
+    elif host_email.endswith(("@outlook.com", "@hotmail.com", "@live.com")):
+        return "outlook.office365.com", 993  # modern Outlook IMAP
+    elif host_email.endswith("@yahoo.com"):
+        return "imap.mail.yahoo.com", 993
+    else:  # fallback: let user supply
+        env_host = os.getenv("EMAIL_IMAP_SERVER")
+        return env_host or "imap.gmail.com", int(os.getenv("EMAIL_IMAP_PORT", 993))
+
+
+def first_visible_line(msg) -> str:
+    """Return the first non-quoted, non-blank line (plain-text > HTML). This function is utilized for watching the inbox."""
+    for part in msg.walk():
+        if part.get_content_type() == "text/plain":
+            body = part.get_payload(decode=True).decode(
+                part.get_content_charset() or "utf-8", "ignore"
+            )
+            break
+        if part.get_content_type() == "text/html":
+            import bs4, html
+
+            html_body = part.get_payload(decode=True).decode(
+                part.get_content_charset() or "utf-8", "ignore"
+            )
+            body = bs4.BeautifulSoup(html_body, "html.parser").get_text()
+            break
+    else:
+        return ""
+
+    for line in body.splitlines():
+        line = line.strip()
+        if line and not line.startswith((">", "|")):
+            return line
+    return ""
+
+
 function_map = {
     "get_employee_balance": get_employee_balance,
     "get_employee_info": get_employee_info,
@@ -209,6 +301,7 @@ function_map = {
     "update_leave_balance": update_leave_balance,
     "add_leave_log": add_leave_log,
     "update_leave_log_status": update_leave_log_status,
+    "file_search": file_search,
 }
 
 
