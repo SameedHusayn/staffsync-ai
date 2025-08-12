@@ -1,9 +1,6 @@
 import datetime
-from openai import OpenAI
 import os
-from dotenv import load_dotenv
 import json
-from .constants import tools
 from .core.auth_middleware import authenticate_function_call, pending_function_calls
 from .core.auth import send_mail
 from .sheets_config import balance_ws, directory_ws, logs_ws
@@ -14,20 +11,8 @@ from .hr_policy_vault import (
     get_or_create_policy_collection,
 )
 
-load_dotenv()
-
 hr_docs = get_or_create_policy_collection()
 load_policies(hr_docs)
-
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    raise RuntimeError(
-        "OPENAI_API_KEY is not set. "
-        "Copy .env.example → .env and put your OpenAI API key."
-    )
-
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 
 def get_employee_balance(employee_id):
@@ -49,6 +34,11 @@ def get_employee_balance(employee_id):
                 "Annual Leave": record["Annual Leave"],
                 "Sick Leave": record["Sick Leave"],
                 "Casual Leave": record["Casual Leave"],
+                "Message": "You currently have {} Annual Leave(s), {} Sick Leave(s), and {} Casual Leave(s).".format(
+                    record["Annual Leave"],
+                    record["Sick Leave"],
+                    record["Casual Leave"],
+                ),
             }
 
     return None  # Employee not found
@@ -154,13 +144,17 @@ def add_leave_log(
     leaves_balance = get_employee_balance(employee_id)
     if not leaves_balance:
         print(f"Employee ID {employee_id} not found or has no leave balance.")
-        return f"Employee ID {employee_id} not found or has no leave balance."
+        return {
+            "Message": f"Employee ID {employee_id} not found or has no leave balance."
+        }
 
     if leaves_balance[leave_type] < days:
         print(
             f"Insufficient {leave_type} balance for employee ID {employee_id}. Available: {leaves_balance[leave_type]}, Requested: {days}."
         )
-        return f"Insufficient {leave_type} balance for employee ID {employee_id}. Available: {leaves_balance[leave_type]}, Requested: {days}."
+        return {
+            "Message": f"Insufficient {leave_type} balance for employee ID {employee_id}. Available: {leaves_balance[leave_type]}, Requested: {days}."
+        }
 
     employee_info = get_employee_info(employee_id)
     employee_name = employee_info["name"]
@@ -213,10 +207,14 @@ def add_leave_log(
         print(
             f"✅ Email sent to LEAD: {employee_info['lead']} for new leave request #{new_request_id}"
         )
-        return f"{new_request_id} - Leave request added successfully and email sent to employee's lead."
+        return {
+            "Message": f"{new_request_id} - Leave request added successfully and email sent to employee's lead."
+        }
     else:
         print(f"⚠️ Failed to send email for new leave request #{new_request_id}")
-        return f"{new_request_id} - Leave request added successfully, but email notification failed."
+        return {
+            "Message": f"{new_request_id} - Leave request added successfully, but email notification failed."
+        }
 
 
 def update_leave_log_status(request_id, new_status, approved_by=None):
@@ -350,8 +348,6 @@ def first_visible_line(msg) -> str:
 
 function_map = {
     "get_employee_balance": get_employee_balance,
-    "get_employee_info": get_employee_info,
-    "get_employee_logs": get_employee_logs,
     "add_leave_log": add_leave_log,
     "file_search": file_search,
 }
@@ -372,24 +368,15 @@ def call_function(name, raw_args, user_id):
         # User is authenticated or function doesn't require authentication
         if func:
             result = func(**args)
-
+            message = result["Message"]
             # If there's a pending function call for this user, clear it
             if user_id in pending_function_calls:
                 del pending_function_calls[user_id]
 
-            return result
+            return message
     except Exception as e:
         print(f"Error calling function {name}: {e}")
         return {
             "message": f"❌ Error calling function '{name}': {str(e)}",
             "auth_required": False,
         }
-
-
-def generate_response(input_messages, tools=tools):
-    print("Generating response with input:", input_messages)
-    response = client.responses.create(
-        model="gpt-4.1", input=input_messages, tools=tools
-    )
-    print("Generated response:", response)
-    return response

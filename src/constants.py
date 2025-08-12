@@ -1,16 +1,14 @@
-system_call = """You are Avy, an HR assistant for StaffSync.AI. You help employees with leave requests, balance inquiries, and HR policy questions. You can also search HR policy documents for relevant information. Today's date is {date}."""
-
 tools = [
     {
         "type": "function",
         "name": "get_employee_balance",
-        "description": "Return the remaining annual, sick, and casual leave days for the given employee. Make sure user has provided required parameters. Run this only when user asks about their leaves balance.",
+        "description": "Return the remaining annual, sick, and casual leave days for the given employee. Make sure user has provided required parameters. Run this only when user asks about their leaves balance. User needs to provide employee id for this function, if not provided, ask politely first.",
         "parameters": {
             "type": "object",
             "properties": {
                 "employee_id": {
                     "type": "string",
-                    "description": 'The employee’s unique ID (e.g. "113654").',
+                    "description": "The employee's unique ID (e.g. 113654).",
                 }
             },
             "required": ["employee_id"],
@@ -20,13 +18,13 @@ tools = [
     {
         "type": "function",
         "name": "add_leave_log",
-        "description": 'Create a new leave‑request entry (defaults to status "Pending").  Make sure user has provided required parameters.',
+        "description": 'Create a new leave‑request entry (defaults to status "Pending"). If user has not provided any of the required parameters, ask the user politely instead of calling the function.',
         "parameters": {
             "type": "object",
             "properties": {
                 "employee_id": {
                     "type": "string",
-                    "description": "The employee’s unique ID.",
+                    "description": "The employee's unique ID.",
                 },
                 "leave_type": {
                     "type": "string",
@@ -58,7 +56,7 @@ tools = [
     {
         "type": "function",
         "name": "file_search",
-        "description": "Search HR policy documents for relevant information. If you think user has asked a question about company policies, use this tool to find relevant documents.",
+        "description": "Search HR policy documents for relevant information. If you think user has asked a question about company policies, use this tool to find relevant documents. Dont call this call for a general hi/hello type of message. Only use it when you think the user is asking about company policy.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -72,6 +70,27 @@ tools = [
         },
     },
 ]
+system_call_openai = """You are Avy, an HR assistant for StaffSync.AI. You help employees with leave requests, balance inquiries, and HR policy questions. You can also search HR policy documents for relevant information. Today's date is {date}."""
+
+system_call_llama = """
+Environment: ipython\n
+    You are Avy, an HR assistant for StaffSync.AI. 
+    ### How you work\n
+    - NEVER use placeholders like 'your_employee_id' - if you don't have the required information, ASK for it first.\n
+    - Accept simple employee IDs like '1' or '42' - these are valid.\n
+    - If the user's question **needs data from a tool**, reply with **one** JSON\n
+      object (keys `name` and `parameters`) and stop (<|eom_id|>).\n
+    - When you need to call a function, ONLY output the JSON and nothing else.\n
+    - If information is missing (like employee ID), ASK for it instead of calling a function.\n
+    - Always maintain a professional tone, even if the user doesn't.\n
+    - Otherwise answer normally and stop (<|eot_id|>).\n\n    ### Date handling\n
+    - Today's date is {date}\n
+    - Tomorrow's date is {tomorrow_date}\n
+    - When a user mentions 'tomorrow' for leave, use above dates\n\n
+    ### Available tools\n""" + str(
+    tools
+)
+
 
 LEAVE_REQUEST_TEMPLATE = """
 <html>

@@ -6,7 +6,8 @@ import os
 import uuid
 import datetime
 import threading
-from .utils import generate_response, call_function
+from .utils import call_function
+from .models import generate_response
 from .core.auth_middleware import (
     extract_otp_from_message,
     pending_function_calls,
@@ -20,17 +21,35 @@ from .core.auth import (
     pending_otps,
     get_authenticated_employee,
 )
-from .constants import system_call
+from .constants import system_call_llama, system_call_openai
 from .watch_inbox import watch_inbox
 
 
 load_dotenv()
 
-system_call = system_call.format(date=datetime.datetime.now().strftime("%Y-%m-%d"))
+system_call_openai = system_call_openai.format(
+    date=datetime.datetime.now().strftime("%Y-%m-%d")
+)
+system_call_llama = system_call_llama.format(
+    date=datetime.datetime.now().strftime("%Y-%m-%d"),
+    tomorrow_date=(datetime.datetime.now() + datetime.timedelta(days=1)).strftime(
+        "%Y-%m-%d"
+    ),
+)
+
 # Store conversation history per user
 conversation_history = {}
 # Dictionary to store user session data
 user_sessions = {}
+
+use_local_model = True
+MODEL_ID = os.getenv("HF_MODEL_ID")
+if not MODEL_ID:
+    print("MODEL_ID is not set, using OpenAI")
+    use_local_model = False
+
+
+system_call = system_call_llama if use_local_model else system_call_openai
 
 
 def gradio_chat(message, history):
@@ -70,56 +89,49 @@ def gradio_chat(message, history):
 
     # Generate response
     while True:
-        response = generate_response(user_conv_history)
+        tool_call, response = generate_response(user_conv_history, use_local_model)
         executed_tool = False
         assistant_message = ""
 
-        for output in response.output:
-            if output.type == "function_call":
-                print(f"🔧 Function call detected: {output.name}")
-
-                # Call function with authentication check
-                result = call_function(output.name, output.arguments, user_id)
-
-                # Check if authentication is required
-                if isinstance(result, dict) and result.get("auth_required", False):
-                    # Check if this is an access denied message (not OTP needed)
-                    auth_message = result["message"]
-                    if "Access denied" in auth_message or "🚫" in auth_message:
-                        # This is access denied, not OTP required - show in chat only
-                        user_conv_history.append(
-                            {"role": "assistant", "content": auth_message}
-                        )
-                        return auth_message
-                    else:
-                        # This requires OTP popup
-                        if user_id in pending_function_calls:
-                            pending_function_calls[user_id][
-                                "original_message"
-                            ] = message
-                        return "AUTH_REQUIRED:" + auth_message
-
-                # Normal function execution
-                user_conv_history.append(output)
-                user_conv_history.append(
-                    {
-                        "type": "function_call_output",
-                        "call_id": output.call_id,
-                        "output": json.dumps(result),
-                    }
+        if tool_call:
+            print(f"🔧 Tool call detected: {tool_call.name}")
+            if use_local_model:
+                result = call_function(
+                    response.name, response.parameters.model_dump_json(), user_id
                 )
-                executed_tool = True
+            else:
+                result = call_function(response.name, response.arguments, user_id)
 
-            elif output.type == "message":
-                user_conv_history.append(
-                    {"role": "assistant", "content": output.content}
-                )
-                assistant_message = output.content[0].text
+            # Check if authentication is required
+            if isinstance(result, dict) and result.get("auth_required", False):
+                # Check if this is an access denied message (not OTP needed)
+                auth_message = result["message"]
+                if "Access denied" in auth_message or "🚫" in auth_message:
+                    # This is access denied, not OTP required - show in chat only
+                    user_conv_history.append(
+                        {"role": "assistant", "content": auth_message}
+                    )
+                    return auth_message
+                else:
+                    # This requires OTP popup
+                    if user_id in pending_function_calls:
+                        pending_function_calls[user_id]["original_message"] = message
+                    return "AUTH_REQUIRED:" + auth_message
 
-        if not executed_tool:
-            break
+            # Normal function execution
+            user_conv_history.append(result)
+            return result
+            # executed_tool = True
+        else:
+            user_conv_history.append({"role": "assistant", "content": response})
 
-    return assistant_message
+            assistant_message = response
+            return assistant_message
+
+        # if not executed_tool:
+        #     break
+
+    # return assistant_message
 
 
 def handle_otp_submission(otp_input, chat_history):
