@@ -107,46 +107,18 @@ def load_policies(collection=None):
     )
 
 
-def search_policy(
-    query: str,
-    n_results: int = 3,
-    collection=None,
-    similarity_cutoff: float = 1.0,
-    extract_relevant: bool = True,
-    max_context_window: int = 100,
-):
+def search_policy(query: str, n_results: int = 3, collection=None):
+    """
+    Return the first `n_results` policy documents that match `query`.
+    """
     if collection is None:
         collection = get_or_create_policy_collection()
 
-    query_terms = [t.lower() for t in query.split() if len(t) > 3]
-
     res = collection.query(
         query_texts=[query],
-        n_results=max(n_results * 5, 10),  # fetch plenty first
-        include=["documents", "metadatas", "distances"],
+        n_results=n_results,
+        include=["documents"],  # that’s all we need
     )
 
-    docs, metas, dists = res["documents"][0], res["metadatas"][0], res["distances"][0]
-
-    # keep only hits under the cutoff, then sort by distance ↑
-    keep = [
-        (doc, meta, dist)
-        for doc, meta, dist in zip(docs, metas, dists)
-        if dist <= similarity_cutoff
-    ]
-    keep.sort(key=lambda x: x[2])  # nearest first
-    keep = keep[:n_results]  # top‑k after filtering
-
-    if not keep:
-        return []  # or raise / return “no match”
-
-    results = []
-    for doc, meta, _dist in keep:
-        paragraphs = [p for p in doc.split("\n\n") if p.strip()] or [doc]
-        para_scores = [
-            (p, sum(word in p.lower() for word in query_terms)) for p in paragraphs
-        ]
-        best_para = max(para_scores, key=lambda x: x[1])[0]
-        results.append((best_para.strip(), meta))
-
-    return results
+    # Chroma returns a list-of-lists even for a single query
+    return res["documents"][0]  # -> list of up to 3 docs

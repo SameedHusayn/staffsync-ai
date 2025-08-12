@@ -62,7 +62,7 @@ tools = [
             "properties": {
                 "query_text": {
                     "type": "string",
-                    "description": "The text to search for in policy documents.",
+                    "description": "The exact user message pasted without changes.",
                 }
             },
             "required": ["query_text"],

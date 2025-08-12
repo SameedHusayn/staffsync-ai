@@ -293,18 +293,19 @@ def update_leave_log_status(request_id, new_status, approved_by=None):
 
 
 def file_search(query_text):
-    contextful_message = search_policy(
-        query_text, n_results=3, collection=hr_docs, extract_relevant=True
-    )
+    print("Called file_search with query_text:", query_text)
+    contextful_message = search_policy(query_text, n_results=3, collection=hr_docs)
 
-    if contextful_message:
-        context_text = "\n".join(
-            [f"{doc} (from {meta['source']})" for doc, meta in contextful_message]
-        )
-        user_message_with_context = f"{query_text}\n\nContext:\n{context_text}"
-    else:
-        user_message_with_context = query_text
-    return user_message_with_context
+    # if contextful_message:
+    #     context_text = "\n".join(
+    #         [f"{doc} (from {meta['source']})" for doc, meta in contextful_message]
+    #     )
+    #     user_message_with_context = f"{query_text}\n\nContext:\n{context_text}"
+    # else:
+    #     user_message_with_context = query_text
+
+    print("Generated contextful message using file_search:", contextful_message)
+    return contextful_message
 
 
 def infer_imap(host_email: str) -> tuple[str, int]:
