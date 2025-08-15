@@ -1,3 +1,5 @@
+import datetime
+
 tools = [
     {
         "type": "function",
@@ -87,10 +89,19 @@ Environment: ipython\n
     - Today's date is {date}\n
     - Tomorrow's date is {tomorrow_date}\n
     - When a user mentions 'tomorrow' for leave, use above dates\n\n
-    ### Available tools\n""" + str(
-    tools
+    ### Available tools\n"""
+
+system_call_openai = system_call_openai.format(
+    date=datetime.datetime.now().strftime("%Y-%m-%d")
+)
+system_call_llama = system_call_llama.format(
+    date=datetime.datetime.now().strftime("%Y-%m-%d"),
+    tomorrow_date=(datetime.datetime.now() + datetime.timedelta(days=1)).strftime(
+        "%Y-%m-%d"
+    ),
 )
 
+system_call_llama += str(tools)
 
 LEAVE_REQUEST_TEMPLATE = """
 <html>

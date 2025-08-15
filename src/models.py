@@ -40,11 +40,12 @@ def generate_response(input_messages, use_local_model, tools=tools):
             model="gpt-4.1", input=input_messages, tools=tools
         )
         print("Generated response:", response)
-        for output in response.outputs:
+        for output in response.output:
             if output.type == "function_call":
                 return True, output
             elif output.type == "message":
-                return False, output.content
+                print("RETURNING:", output.content[0].text)
+                return False, output.content[0].text
 
     else:
         for attempt in range(1, MAX_REPAIR_TRIES + 1):

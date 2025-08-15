@@ -208,12 +208,12 @@ def add_leave_log(
             f"✅ Email sent to LEAD: {employee_info['lead']} for new leave request #{new_request_id}"
         )
         return {
-            "Message": f"{new_request_id} - Leave request added successfully and email sent to employee's lead."
+            "Message": f"I have added your leave request, and an email has been sent to your lead."
         }
     else:
         print(f"⚠️ Failed to send email for new leave request #{new_request_id}")
         return {
-            "Message": f"{new_request_id} - Leave request added successfully, but email notification failed."
+            "Message": f"{new_request_id} - I have added your leave request successfully, but email notification failed."
         }
 
 
@@ -295,17 +295,31 @@ def update_leave_log_status(request_id, new_status, approved_by=None):
 def file_search(query_text):
     print("Called file_search with query_text:", query_text)
     contextful_message = search_policy(query_text, n_results=3, collection=hr_docs)
-
-    # if contextful_message:
-    #     context_text = "\n".join(
-    #         [f"{doc} (from {meta['source']})" for doc, meta in contextful_message]
-    #     )
-    #     user_message_with_context = f"{query_text}\n\nContext:\n{context_text}"
-    # else:
-    #     user_message_with_context = query_text
-
     print("Generated contextful message using file_search:", contextful_message)
-    return contextful_message
+
+    context_text = ""
+    if contextful_message:
+        # If items are (doc, meta) pairs
+        if all(
+            isinstance(x, (list, tuple)) and len(x) == 2 for x in contextful_message
+        ):
+            parts = []
+            for doc, meta in contextful_message:
+                src = meta.get("source") if isinstance(meta, dict) else None
+                parts.append(f"{doc} (from {src})" if src else str(doc))
+            context_text = "\n".join(parts)
+        else:
+            # Items are plain strings (or anything else): stringify and join
+            context_text = "\n".join(str(x) for x in contextful_message)
+
+    user_message_with_context = (
+        f"{query_text}\n\nContext:\n{context_text}" if context_text else query_text
+    )
+
+    return {
+        "Message": user_message_with_context,  # <-- return a single string
+        "fileSearch": True,
+    }
 
 
 def infer_imap(host_email: str) -> tuple[str, int]:
@@ -370,11 +384,12 @@ def call_function(name, raw_args, user_id):
         if func:
             result = func(**args)
             message = result["Message"]
+            isFileSearch = True if "fileSearch" in result else False
             # If there's a pending function call for this user, clear it
             if user_id in pending_function_calls:
                 del pending_function_calls[user_id]
 
-            return message
+            return message, isFileSearch
     except Exception as e:
         print(f"Error calling function {name}: {e}")
         return {
