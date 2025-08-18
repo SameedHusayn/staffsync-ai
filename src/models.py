@@ -1,9 +1,6 @@
 from openai import OpenAI
 import os
 from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch
-import time
-import json
 from dotenv import load_dotenv
 from pydantic import ValidationError
 import textwrap
@@ -24,12 +21,10 @@ if MODEL_ID:
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
-    raise RuntimeError(
-        "OPENAI_API_KEY is not set. "
-        "Copy .env.example → .env and put your OpenAI API key."
-    )
+    print("OPENAI_API_KEY is not set.")
 
-
+if not OPENAI_API_KEY and not MODEL_ID:
+    raise ValueError("Either OPENAI_API_KEY or HF_MODEL_ID must be set.")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 
