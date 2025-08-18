@@ -113,86 +113,70 @@ def process_message(message, user_id):
     user_conv_history.append({"role": "user", "content": message})
 
     # Generate response
-    while True:
-        tool_call, response = generate_response(user_conv_history, use_local_model)
-        executed_tool = False
-        assistant_message = ""
+    # while True:
+    tool_call, response = generate_response(user_conv_history, use_local_model)
+    executed_tool = False
+    assistant_message = ""
 
-        if tool_call:
-            print(f"🔧 Calling function: {response.name}")
+    if tool_call:
+        print(f"🔧 Calling function: {response.name}")
 
+        if use_local_model:
+            call_result = call_function(
+                response.name, response.parameters.model_dump_json(), user_id
+            )
+            callID = None
+        else:
+            call_result = call_function(response.name, response.arguments, user_id)
+            callID = response.call_id
+
+        # Check if authentication is required
+        if call_result.get("auth_required"):
+            auth_message = call_result["message"]
+            # Show popup flow for OTP (NOT an error)
+            if "Access denied" in auth_message or "🚫" in auth_message:
+                # Hard deny -> just show it
+                user_conv_history.append({"role": "assistant", "content": auth_message})
+                return {"message": auth_message, "require_auth": False}
+            return {"message": auth_message, "require_auth": True}
+
+        if call_result.get("is_file_search"):
             if use_local_model:
-                result, isFileSearch = call_function(
-                    response.name, response.parameters.model_dump_json(), user_id
+                # If using local model, include file search results in context
+                user_conv_history.append(
+                    {
+                        "role": "user",
+                        "content": "Here is the context from the tool-call:\n"
+                        + call_result["message"],
+                    }
                 )
             else:
-                result, isFileSearch = call_function(
-                    response.name, response.arguments, user_id
-                )
-                callID = response.call_id
-
-            # Check if authentication is required
-            if isinstance(result, dict) and result.get("auth_required", False):
-                # Check if this is an access denied message (not OTP needed)
-                auth_message = result["message"]
-                if "Access denied" in auth_message or "🚫" in auth_message:
-                    # This is access denied, not OTP required - show in chat only
-                    user_conv_history.append(
-                        {"role": "assistant", "content": auth_message}
-                    )
-                    return {
-                        "message": auth_message,
-                        "require_auth": False,
-                    }
-                else:
-                    # This requires OTP popup - DON'T add to conversation history
-                    if user_id in pending_function_calls:
-                        pending_function_calls[user_id]["original_message"] = message
-                    return {
-                        "message": auth_message,
-                        "require_auth": True,
-                    }
-
-            if isFileSearch:
-                user_conv_history.append(
-                    {"role": "assistant", "content": str(response)}
-                )
+                user_conv_history.append(response)  # the function_call
                 user_conv_history.append(
                     {
                         "type": "function_call_output",
-                        "call_id": callID,
-                        "output": json.dumps(result),
+                        "call_id": callID if callID else None,
+                        "output": call_result["message"],
                     }
                 )
-                tool_call, response = generate_response(
-                    user_conv_history, use_local_model
-                )
-                user_conv_history.append({"role": "assistant", "content": response})
-                return {"message": response, "require_auth": False}
 
-            # Normal function execution
-            user_conv_history.append({"role": "assistant", "content": result})
-            return {
-                "message": result,
-                "require_auth": False,
-            }
-        else:
-            user_conv_history.append({"role": "assistant", "content": response})
+            tool_call, response2 = generate_response(user_conv_history, use_local_model)
+            user_conv_history.append({"role": "assistant", "content": response2})
+            return {"message": response2, "require_auth": False}
 
-            assistant_message = response
-            return {
-                "message": assistant_message,
-                "require_auth": False,
-            }
+        # Normal function execution
+        user_conv_history.append(
+            {"role": "assistant", "content": call_result["message"]}
+        )
+        return {"message": call_result["message"], "require_auth": False}
+    else:
+        user_conv_history.append({"role": "assistant", "content": response})
 
-        # if not executed_tool:
-        #     break
-
-    # return assistant_message
-    return {
-        "message": assistant_message,
-        "require_auth": False,
-    }
+        assistant_message = response
+        return {
+            "message": assistant_message,
+            "require_auth": False,
+        }
 
 
 def handle_otp_submission(otp_input, user_id):
@@ -208,66 +192,41 @@ def handle_otp_submission(otp_input, user_id):
     # Verify OTP
     result = verify_otp(user_id, emp_id, otp_input.strip())
 
-    if result["authenticated"]:
-        # Execute pending function call
-        if user_id in pending_function_calls:
-            pending_call = pending_function_calls[user_id]
-            print(f"🔄 Executing pending function: {pending_call}")
-
-            # Execute the function
-            func_result = call_function(
-                pending_call["func_name"],
-                json.dumps(pending_call["func_args"]),
-                user_id,
-            )
-
-            # Add to conversation history with proper format
-            user_conv_history = conversation_history[user_id]
-
-            # Generate a unique call ID
-            call_id = f"call_{str(uuid.uuid4())[:8]}"
-
-            # user_conv_history.append(
-            #     {
-            #         "type": "function_call",
-            #         "name": pending_call["func_name"],
-            #         "arguments": json.dumps(pending_call["func_args"]),
-            #         "call_id": call_id,
-            #     }
-            # )
-            user_conv_history.append({"role": "assistant", "content": func_result})
-
-            # # Generate LLM response
-            # try:
-            #     response = generate_response(user_conv_history)
-            #     assistant_message = ""
-            #     for output in response.output:
-            #         if output.type == "message":
-            #             user_conv_history.append(
-            #                 {"role": "assistant", "content": output.content}
-            #             )
-            #             assistant_message = output.content[0].text
-            #             break
-
-            # Clear pending call
-            if user_id in pending_function_calls:
-                del pending_function_calls[user_id]
-
-            return {"success": True, "message": func_result}
-
-            # except Exception as e:
-            #     print(f"❌ Error generating response: {e}")
-            #     error_message = f"✅ Authentication successful! Your leave balance data was retrieved, but I encountered an error generating the response. Employee {emp_id} data: {func_result}"
-
-            #     # Clear pending call safely
-            #     if user_id in pending_function_calls:
-            #         del pending_function_calls[user_id]
-
-            #     return {"success": True, "message": error_message}
-        else:
-            return {"success": True, "message": "✅ Authentication successful!"}
-    else:
+    if not result["authenticated"]:
         return {"success": False, "message": f"❌ {result['message']}"}
+
+    # Execute pending function call (if any)
+    pending_call = pending_function_calls.get(user_id)
+    if not pending_call:
+        return {"success": True, "message": "✅ Authentication successful!"}
+
+    print(f"🔄 Executing pending function: {pending_call}")
+
+    call_result = call_function(
+        pending_call["func_name"],
+        json.dumps(pending_call["func_args"]),
+        user_id,
+    )
+
+    # Add to conversation history
+    user_conv_history = conversation_history[user_id]
+
+    # Normal function execution
+    user_conv_history.append(
+        {"role": "assistant", "content": call_result.get("message", "")}
+    )
+
+    # Clear pending call
+    pending_function_calls.pop(user_id, None)
+
+    # Bubble up any error from the function call in a user-friendly way
+    if not call_result.get("ok", False):
+        return {
+            "success": False,
+            "message": call_result.get("message", "❌ Something went wrong."),
+        }
+
+    return {"success": True, "message": call_result.get("message", "")}
 
 
 @app.route("/")

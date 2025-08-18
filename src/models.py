@@ -50,22 +50,46 @@ def generate_response(input_messages, use_local_model, tools=tools):
     else:
         for attempt in range(1, MAX_REPAIR_TRIES + 1):
             # generate
-            inputs = tokenizer.apply_chat_template(
-                input_messages, add_generation_prompt=True, return_tensors="pt"
-            ).to(model.device)
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
+            model.config.pad_token_id = tokenizer.pad_token_id
+
+            # Render prompt as plain text, then tokenize (with mask)
+            prompt = tokenizer.apply_chat_template(
+                input_messages, add_generation_prompt=True, tokenize=False
+            )
+            enc = tokenizer(prompt, return_tensors="pt").to(model.device)
 
             ids = model.generate(
-                inputs,
-                max_new_tokens=256,  # Increased to allow for longer responses
+                **enc,
+                max_new_tokens=256,
                 eos_token_id=[
                     tokenizer.convert_tokens_to_ids("<|eot_id|>"),
                     tokenizer.convert_tokens_to_ids("<|eom_id|>"),
                 ],
-                pad_token_id=tokenizer.eos_token_id,
+                pad_token_id=tokenizer.pad_token_id,
             )
+            prompt_len = enc.input_ids.shape[-1]
             raw_reply = tokenizer.decode(
-                ids[0][inputs.shape[-1] :], skip_special_tokens=False
+                ids[0][prompt_len:], skip_special_tokens=False  # skip prompt tokens
             )
+
+            # inputs = tokenizer.apply_chat_template(
+            #     input_messages, add_generation_prompt=True, return_tensors="pt"
+            # ).to(model.device)
+
+            # ids = model.generate(
+            #     inputs,
+            #     max_new_tokens=256,  # Increased to allow for longer responses
+            #     eos_token_id=[
+            #         tokenizer.convert_tokens_to_ids("<|eot_id|>"),
+            #         tokenizer.convert_tokens_to_ids("<|eom_id|>"),
+            #     ],
+            #     pad_token_id=tokenizer.eos_token_id,
+            # )
+            # raw_reply = tokenizer.decode(
+            #     ids[0][inputs.shape[-1] :], skip_special_tokens=False
+            # )
             print("Raw Reply:", raw_reply)
 
             # Extract response content

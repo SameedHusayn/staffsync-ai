@@ -369,30 +369,48 @@ function_map = {
 
 
 def call_function(name, raw_args, user_id):
-    """Call a function with authentication check."""
     try:
         args = json.loads(raw_args)
         func = function_map.get(name)
 
-        # Check if authentication is required
+        # Auth check
         auth_message = authenticate_function_call(user_id, "", name, args)
         if auth_message:
-            # Authentication required or in progress - return the message instead of calling function
-            return {"message": auth_message, "auth_required": True}
+            return {
+                "message": auth_message,
+                "auth_required": True,
+                "is_file_search": False,
+                "ok": False,
+            }
 
-        # User is authenticated or function doesn't require authentication
         if func:
             result = func(**args)
             message = result["Message"]
-            isFileSearch = True if "fileSearch" in result else False
-            # If there's a pending function call for this user, clear it
+            is_file_search = "fileSearch" in result
+
+            # Clear any pending call
             if user_id in pending_function_calls:
                 del pending_function_calls[user_id]
 
-            return message, isFileSearch
+            return {
+                "message": message,
+                "auth_required": False,
+                "is_file_search": is_file_search,
+                "ok": True,
+            }
+
+        return {
+            "message": f"❌ Unknown function '{name}'",
+            "auth_required": False,
+            "is_file_search": False,
+            "ok": False,
+        }
+
     except Exception as e:
         print(f"Error calling function {name}: {e}")
         return {
             "message": f"❌ Error calling function '{name}': {str(e)}",
             "auth_required": False,
+            "is_file_search": False,
+            "ok": False,
         }
