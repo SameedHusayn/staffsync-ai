@@ -25,27 +25,27 @@
 
     <footer>
       <p>
-        Images are expected in the repository at <code>assets/</code>.
-        Example names used: <code>01-home.png</code>, <code>02-otp-modal.png</code>, ...
-        Update <code>images</code> in this file if you use different names.
+        Place your screenshots in <code>/docs/assets/</code> for GitHub Pages.
+        Example names: <code>01-home.png</code>, <code>02-otp-modal.png</code>, ...
+        Update the <code>images</code> array below if you use different names.
       </p>
     </footer>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
   <script>
-    // Edit this list to match the screenshots you add inside /assets
+    // IMPORTANT: Files must be inside /docs/assets when using GitHub Pages with "docs" as source.
     const images = [
-      { src: "../assets/01-home.png", caption: "Home / Chat (balance)" },
-      { src: "../assets/02-otp-modal.png", caption: "Request → OTP modal" },
-      { src: "../assets/03-otp-email.png", caption: "OTP email" },
-      { src: "../assets/04-function-calling.png", caption: "Function calling" },
-      { src: "../assets/05-leave-request-email-to-lead.png", caption: "Leave request email to lead" },
-      { src: "../assets/06-leave-approved.png", caption: "Leave approved (watcher)" },
-      { src: "../assets/07-leaves-logs.png", caption: "Google Sheets: Leaves Logs" },
-      { src: "../assets/08-leaves-balance.png", caption: "Google Sheets: Leaves Balance" },
-      { src: "../assets/09-emp-directory.png", caption: "Google Sheets: Employee Directory" },
-      { src: "../assets/10-leave-change-reflected.png", caption: "Leave balance change reflected" }
+      { src: "./assets/01-home.png", caption: "Home / Chat (balance)" },
+      { src: "./assets/02-otp-modal.png", caption: "Request → OTP modal" },
+      { src: "./assets/03-otp-email.png", caption: "OTP email" },
+      { src: "./assets/04-function-calling.png", caption: "Function calling" },
+      { src: "./assets/05-leave-request-email-to-lead.png", caption: "Leave request email to lead" },
+      { src: "./assets/06-leave-approved.png", caption: "Leave approved (watcher)" },
+      { src: "./assets/07-leaves-logs.png", caption: "Google Sheets: Leaves Logs" },
+      { src: "./assets/08-leaves-balance.png", caption: "Google Sheets: Leaves Balance" },
+      { src: "./assets/09-emp-directory.png", caption: "Google Sheets: Employee Directory" },
+      { src: "./assets/10-leave-change-reflected.png", caption: "Leave balance change reflected" }
     ];
 
     const slides = document.getElementById('slides');
